@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'nonce-monitoramento-xterm-style-1'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Monitoramento</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="git-view.css">
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="git-workspace.css">
+<link rel="stylesheet" href="terminals.css">
+</head>
+<body>
+<div id="cfgWarn" class="banner" role="alert" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 19h18z"/><path d="M12 10v4M12 16.8v.2"/></svg><span id="cfgWarnText"></span><button class="btn small" id="cfgWarnClose" type="button">Fechar</button></div>
+<header class="machine" aria-label="Uso da máquina">
+  <section class="m-mem" aria-label="Memória">
+    <div class="m-label">Memória</div>
+    <div class="m-big"><span id="memPct" class="num">–</span><span class="unit">%</span><span id="memState" class="m-state" hidden></span></div>
+    <div class="meter" role="meter" id="memMeter" aria-label="Memória em uso" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="memBar"></i></div>
+    <div id="memDetail" class="m-detail">–</div>
+  </section>
+  <section class="m-side" aria-label="CPU e processos">
+    <div class="kpi"><div class="m-label">CPU</div><div class="kpi-v"><span id="cpuPct" class="num">–</span><span class="unit">%</span></div><div class="meter thin"><i id="cpuBar"></i></div></div>
+    <div class="kpi"><div class="m-label">Processos</div><div class="kpi-v"><span id="procCount" class="num">–</span></div></div>
+  </section>
+  <section class="m-chart" aria-label="Histórico dos últimos 10 minutos">
+    <div class="chart-head">
+      <span class="lg"><i class="sw mem"></i>Memória</span>
+      <span class="lg"><i class="sw cpu"></i>CPU</span>
+      <span class="chart-note">últimos 10 min</span>
+    </div>
+    <div class="chart" id="chart" role="img" aria-label="Histórico de memória e CPU">
+      <svg viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true">
+        <line class="grid" x1="0" x2="300" y1="30" y2="30"/>
+        <path id="areaMem" class="area-mem" d=""/>
+        <path id="lineMem" class="line-mem" d=""/>
+        <path id="lineCpu" class="line-cpu" d=""/>
+      </svg>
+      <span class="ax top">100%</span><span class="ax mid">50%</span>
+      <div class="cross" id="cross" hidden></div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+  </section>
+</header>
+
+<div id="workarea" class="workarea">
+<div id="leftcol" class="leftcol">
+<div class="toolbar">
+  <div class="tabs" role="tablist" aria-label="Seções">
+    <button role="tab" id="tab-apps" data-tab="apps" aria-selected="true" aria-controls="listwrap">Aplicações <span class="count" id="cnt-apps">0</span></button>
+    <button role="tab" id="tab-favs" data-tab="favs" aria-selected="false" aria-controls="listwrap" tabindex="-1">Favoritos <span class="count" id="cnt-favs">0</span></button>
+    <button role="tab" id="tab-git" data-tab="git" aria-selected="false" aria-controls="wsPanel" tabindex="-1">Git <span class="count" id="cnt-git">0</span></button>
+    <button role="tab" id="tab-saved" data-tab="saved" aria-selected="false" aria-controls="listwrap" tabindex="-1">Salvos <span class="count" id="cnt-saved">0</span></button>
+  </div>
+  <div class="search">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/></svg>
+    <input id="q" type="search" placeholder="Buscar nome, pasta, comando, repo" aria-label="Buscar" autocomplete="off" spellcheck="false">
+    <kbd class="kbd" aria-hidden="true">/</kbd>
+  </div>
+  <label class="sort" id="sortWrap"><span class="sr">Ordenar por</span>
+    <select id="sort" aria-label="Ordenar por">
+      <option value="memory">Mais memória</option>
+      <option value="cpu">Mais CPU</option>
+      <option value="name">Nome (A–Z)</option>
+    </select>
+  </label>
+  <button class="btn primary" id="btnNew" type="button" hidden></button>
+  <button class="btn icon" id="btnTheme" type="button" aria-label="Alternar tema"></button>
+</div>
+
+<div class="pausehint" id="pauseHint" role="status" hidden>Ordem pausada enquanto o mouse está sobre a lista</div>
+
+<main id="listwrap" class="listwrap" tabindex="-1" role="tabpanel">
+  <div class="colhead" id="colhead" aria-hidden="true">
+    <span></span><span></span><span>Aplicação</span><span class="r">Memória</span><span class="r">CPU</span><span class="h-spark">Tendência</span><span></span>
+  </div>
+  <div id="list" class="list" role="tree" aria-label="Lista"></div>
+</main>
+<div id="termLoose"></div>
+</div>
+<div id="dockSplit" class="dock-split" role="separator" aria-orientation="vertical" aria-label="Largura do painel git" aria-valuemin="25" aria-valuemax="70" aria-valuenow="42" tabindex="0" hidden></div>
+
+<section id="gitwrap" class="gitwrap" role="region" aria-label="Git" tabindex="-1" hidden>
+  <div class="ws-bar">
+    <div id="wsTabs" class="ws-tabs" role="tablist" aria-label="Projetos abertos"></div>
+    <button id="wsAdd" class="ibtn ws-add" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="wsMenu" aria-label="Abrir projeto" title="Abrir projeto"></button>
+    <button id="wsClose" class="ibtn" type="button" data-wa="close-active" aria-label="Fechar aba atual (Delete na aba)" title="Fechar aba atual" hidden></button>
+    <span class="gp-sp"></span>
+    <button id="wsCollapse" class="ibtn" type="button" data-wa="collapse" aria-label="Recolher painel git (Esc)" title="Recolher painel git (Esc)" hidden></button>
+    <button id="wsDock" class="btn small ghost" type="button" data-wa="dock" aria-pressed="false"></button>
+  </div>
+  <div id="wsMenu" class="pop ws-menu" role="menu" aria-label="Abrir projeto" hidden></div>
+  <div id="wsPanel" class="ws-panel" role="tabpanel" tabindex="-1" hidden>
+    <div id="wsProj" class="ws-proj"></div>
+    <div id="wsEmpty" class="gv-empty" hidden></div>
+    <div id="gitgrid" class="gitgrid" data-n="0" hidden></div>
+    <div id="termDock"></div>
+  </div>
+  <div id="wsPage" class="ws-page" hidden></div>
+</section>
+</div>
+<button id="dockHandle" class="dock-handle" type="button" aria-controls="gitwrap" aria-expanded="false" hidden>Git <span class="count" id="dockHandleCnt">0</span></button>
+
+<aside id="drawer" class="drawer" role="dialog" aria-modal="false" aria-labelledby="dwTitle" hidden></aside>
+
+<dialog id="formDlg" class="dlg" aria-labelledby="formTitle">
+  <form id="form" novalidate>
+    <h2 id="formTitle" class="dlg-title">Novo processo salvo</h2>
+    <div class="dlg-body">
+      <div class="field"><label for="f-name">Nome</label><input id="f-name" name="name" type="text" autocomplete="off" required aria-describedby="e-name"><div class="err" id="e-name" role="alert"></div></div>
+      <div class="field"><div class="warnbox" id="w-cmd" role="status" hidden></div><label for="f-cmd">Comando</label><textarea id="f-cmd" name="command" rows="3" spellcheck="false" required aria-describedby="h-cmd e-cmd" placeholder="npm run dev"></textarea><div class="sugg" id="f-sugg" role="group" aria-label="Sugestões de comando" hidden></div><div class="hint" id="h-cmd">Linha completa, como no terminal.</div><div class="err" id="e-cmd" role="alert"></div></div>
+      <div class="field"><label for="f-dir">Pasta de trabalho</label><input id="f-dir" name="workingDirectory" type="text" autocomplete="off" spellcheck="false" placeholder="C:\projetos\meu-app"></div>
+      <fieldset class="field envset"><legend>Variáveis de ambiente</legend>
+        <div id="envRows" class="env-rows"></div>
+        <button class="btn ghost small" id="btnEnvAdd" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Adicionar variável</button>
+        <div class="err" id="e-env" role="alert"></div>
+      </fieldset>
+      <fieldset class="field modeset"><legend>Como abrir</legend>
+        <label class="radio"><input type="radio" name="launchMode" value="terminal" checked><span><b>Terminal no app</b><small>Abre numa aba de terminal do projeto, com saída e entrada. É o padrão.</small></span></label>
+        <label class="radio"><input type="radio" name="launchMode" value="window"><span><b>Janela de console separada</b><small>Abre uma janela do console do Windows, fora do app.</small></span></label>
+        <label class="radio"><input type="radio" name="launchMode" value="hidden"><span><b>Oculto</b><small>Roda em segundo plano, sem janela e sem saída visível.</small></span></label>
+      </fieldset>
+      <div class="field"><label for="f-notes">Observações</label><textarea id="f-notes" name="notes" rows="2"></textarea></div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="formCancel">Cancelar</button>
+      <button class="btn primary" type="submit" id="formSave">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="projDlg" class="dlg small" aria-labelledby="pjTitle">
+  <form id="projForm" novalidate>
+    <h2 id="pjTitle" class="dlg-title">Salvar projeto</h2>
+    <div class="dlg-body">
+      <div class="field"><label for="pj-name">Nome do projeto</label><input id="pj-name" name="name" type="text" maxlength="80" autocomplete="off" required aria-describedby="e-pjname"><div class="err" id="e-pjname" role="alert"></div></div>
+      <div class="field"><span class="lbl" id="pj-folder-l">Pasta</span><code class="pj-folder" id="pj-folder" aria-labelledby="pj-folder-l"></code></div>
+      <div class="field"><span class="lbl" id="pj-repos-l">Repositórios</span><div class="pj-repos-txt" id="pj-repos" aria-labelledby="pj-repos-l"></div></div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="projCancel">Cancelar</button>
+      <button class="btn primary" type="submit" id="projSave">Salvar projeto</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="wtDlg" class="dlg" aria-labelledby="wtTitle">
+  <form id="wtForm" novalidate>
+    <h2 id="wtTitle" class="dlg-title">Novo worktree</h2>
+    <div class="dlg-body">
+      <div class="field" id="wt-repo-f"><label for="wt-repo">Repositório</label><select id="wt-repo"></select></div>
+      <fieldset class="field modeset"><legend>Branch</legend>
+        <label class="radio"><input type="radio" name="wtMode" value="existing" checked><span><b>Branch existente</b><small>Escolha uma branch local ou remota. Branches em uso em outro worktree não podem ser escolhidas.</small></span></label>
+        <label class="radio"><input type="radio" name="wtMode" value="new"><span><b>Nova branch</b><small>Cria a branch junto com o worktree, a partir de outra.</small></span></label>
+      </fieldset>
+      <div class="field" id="wt-ex"><label for="wt-q">Buscar branch</label><input id="wt-q" type="search" autocomplete="off" spellcheck="false"><div id="wt-list" class="wt-blist" role="listbox" aria-label="Branches"></div></div>
+      <div id="wt-nw" hidden>
+        <div class="field"><label for="wt-name">Nome da nova branch</label><input id="wt-name" type="text" autocomplete="off" spellcheck="false" placeholder="feature/minha-mudanca"></div>
+        <div class="field"><label for="wt-from">A partir de</label><select id="wt-from"></select></div>
+      </div>
+      <div class="field"><label for="wt-path">Pasta do worktree</label><input id="wt-path" type="text" autocomplete="off" spellcheck="false" aria-describedby="wt-path-h e-wtpath"><div class="hint" id="wt-path-h"></div><div class="err" id="e-wtpath" role="alert"></div></div>
+      <label class="check"><input id="wt-env" type="checkbox" checked><span>Copiar arquivos .env do repositório principal</span></label>
+      <label class="check"><input id="wt-tab" type="checkbox" checked><span>Abrir em nova aba</span></label>
+      <div class="field"><label for="wt-run">Rodar comando salvo depois (opcional)</label><select id="wt-run"><option value="">Nenhum</option></select></div>
+      <div class="err" id="e-wt" role="alert"></div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="wtCancel">Cancelar</button>
+      <button class="btn primary" type="submit" id="wtSave">Criar worktree</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirmDlg" class="dlg small" aria-labelledby="cfTitle" aria-describedby="cfBody">
+  <form method="dialog" id="confirmForm">
+    <h2 id="cfTitle" class="dlg-title"></h2>
+    <div class="dlg-body"><p id="cfBody" class="cf-body"></p>
+      <label class="check" id="cfCheckWrap" hidden><input id="cfCheck" type="checkbox"><span id="cfCheckLabel"></span></label>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" value="cancel" id="cfCancel" type="submit">Cancelar</button>
+      <button class="btn primary" value="ok" id="cfOk" type="submit"></button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="style-nonce.js"></script>
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-webgl.js"></script>
+<script src="git-view.js"></script>
+<script src="git-workspace.js"></script>
+<script src="terminals.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

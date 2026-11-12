@@ -1,0 +1,14 @@
+# build
+bin/
+obj/
+publish/
+publish-*/
+TestResults/
+*.user
+.vs/
+.vscode/
+.idea/
+
+# ferramentas locais
+graft/
+.claude/
